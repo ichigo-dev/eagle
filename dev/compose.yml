@@ -1,0 +1,14 @@
+################################################################################
+# Docker containers
+################################################################################
+
+services:
+  app:
+    container_name: eagle_app
+    build:
+      context: .
+      dockerfile: ./docker/rust/Dockerfile
+    volumes:
+      - ./src:/app
+    working_dir: /app
+    tty: true

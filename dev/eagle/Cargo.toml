@@ -1,0 +1,10 @@
+[package]
+name = "eagle"
+version = "0.1.0"
+authors = ["ichigo-dev <dev.honda.ichigo@gmail.com>"]
+edition = "2021"
+license = "MIT"
+description = "A simple and fast web framework for Rust."
+repository = "https://github.com/ichigo-dev/eagle"
+
+[dependencies]
