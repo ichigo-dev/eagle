@@ -41,24 +41,8 @@ impl EagleServer
         executor.start();
         executor.block_on(async
         {
-            handle_connection().await;
-            handle_connection().await;
+            println!("run");
         });
         Ok(())
     }
-}
-
-async fn inner_fn()
-{
-    println!("inner");
-}
-
-async fn handle_connection()
-{
-    println!("hello");
-    inner_fn().await;
-    println!("world");
-    inner_fn().await;
-    println!("!!!");
-    std::thread::sleep(std::time::Duration::from_secs(1));
 }

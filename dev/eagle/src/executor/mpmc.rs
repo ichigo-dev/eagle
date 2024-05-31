@@ -174,13 +174,4 @@ impl<T> Receiver<T>
         let message = self.inner.lock()?.recv()?;
         Ok(message)
     }
-
-    //--------------------------------------------------------------------------
-    /// Tries to receive a message.
-    //--------------------------------------------------------------------------
-    fn try_recv( &self ) -> Result<T, MpmcError<T>>
-    {
-        let message = self.inner.lock()?.try_recv()?;
-        Ok(message)
-    }
 }
