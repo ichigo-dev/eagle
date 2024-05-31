@@ -12,7 +12,6 @@ use std::sync::{ mpsc, Arc, Mutex, PoisonError };
 pub(super) fn channel<T>() -> (Sender<T>, Receiver<T>)
 {
     let (sender, receiver) = mpsc::channel();
-
     let sender = Sender::new(sender);
     let receiver = Receiver::new(receiver);
     (sender, receiver)
@@ -42,7 +41,6 @@ impl<T> Debug for MpmcError<T>
             Self::PoisonError => write!(f, "PoisonError"),
         }
     }
-
 }
 
 impl<T> Display for MpmcError<T>
@@ -123,6 +121,7 @@ impl<T> Sender<T>
             inner: self.inner.clone(),
         }
     }
+
     //--------------------------------------------------------------------------
     /// Sends a message.
     //--------------------------------------------------------------------------
