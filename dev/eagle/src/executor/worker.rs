@@ -6,7 +6,7 @@ use super::task::Task;
 use super::mpmc::{ Receiver, Sender };
 use super::waker::waker_fn;
 
-use std::sync::{ Arc, Mutex };
+use std::sync::{ Arc, Condvar, Mutex };
 use std::task::{ Context, Poll };
 use std::thread;
 
@@ -15,6 +15,7 @@ pub(super) struct Worker<T>
     id: usize,
     sender: Sender<Arc<Mutex<Task<T>>>>,
     receiver: Receiver<Arc<Mutex<Task<T>>>>,
+    is_done: Arc<(Mutex<Option<T>>, Condvar)>,
 }
 
 impl<T: Send + 'static> Worker<T>
@@ -27,6 +28,7 @@ impl<T: Send + 'static> Worker<T>
         id: usize,
         sender: Sender<Arc<Mutex<Task<T>>>>,
         receiver: Receiver<Arc<Mutex<Task<T>>>>,
+        is_done: Arc<(Mutex<Option<T>>, Condvar)>,
     ) -> Self
     {
         Self
@@ -34,6 +36,7 @@ impl<T: Send + 'static> Worker<T>
             id,
             sender, 
             receiver,
+            is_done,
         }
     }
 
@@ -44,7 +47,8 @@ impl<T: Send + 'static> Worker<T>
     {
         let sender = self.sender.clone();
         let receiver = self.receiver.clone();
-        let id = self.id;
+        let is_done = self.is_done.clone();
+
         let _ = thread::Builder::new().name(self.id.to_string()).spawn(move ||
         {
             loop
@@ -54,7 +58,6 @@ impl<T: Send + 'static> Worker<T>
                     Ok(task) => task,
                     Err(_) => break,
                 };
-                println!("Worker {} is running", id);
 
                 let cloned_task = task.clone();
                 let waker =
@@ -74,7 +77,13 @@ impl<T: Send + 'static> Worker<T>
                 };
                 match guard.poll(&mut context)
                 {
-                    Poll::Ready(_) => {},
+                    Poll::Ready(result) =>
+                    {
+                        let (lock, cvar) = &*is_done;
+                        let mut done = lock.lock().unwrap();
+                        *done = Some(result);
+                        cvar.notify_one();
+                    },
                     Poll::Pending => {},
                 };
             }

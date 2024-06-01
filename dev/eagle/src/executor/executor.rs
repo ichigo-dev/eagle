@@ -18,6 +18,7 @@ pub(crate) struct Executor<T>
 {
     workers: Vec<Worker<T>>,
     sender: Sender<Arc<Mutex<Task<T>>>>,
+    is_done: Arc<(Mutex<Option<T>>, Condvar)>,
 }
 
 impl<T: Send + 'static> Executor<T>
@@ -29,10 +30,12 @@ impl<T: Send + 'static> Executor<T>
     {
         let (sender, receiver) = mpmc::channel();
         let mut workers = Vec::with_capacity(num_threads);
+        let is_done = Arc::new((Mutex::new(None), Condvar::new()));
+
         for id in 0..num_threads
         {
             let receiver = receiver.clone();
-            let worker = Worker::new(id, sender.clone(), receiver);
+            let worker = Worker::new(id, sender.clone(), receiver, is_done.clone());
             workers.push(worker);
         }
 
@@ -40,6 +43,7 @@ impl<T: Send + 'static> Executor<T>
         {
             workers,
             sender,
+            is_done,
         }
     }
     
@@ -72,13 +76,11 @@ impl<T: Send + 'static> Executor<T>
         let future = Box::pin(future);
         let task = Arc::new(Mutex::new(Task::new(future)));
 
-        let lock = Arc::new((Mutex::new(None), Condvar::new()));
         self.spawn(task);
 
-        let (lock, cvar) = &*lock;
+        let (lock, cvar) = &*self.is_done;
         let mut result = lock.lock().unwrap();
-        while result.is_none()
-        {
+        while result.is_none() {
             result = cvar.wait(result).unwrap();
         }
 
