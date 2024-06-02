@@ -15,7 +15,7 @@ use std::sync::{ Condvar, Mutex, PoisonError };
 //------------------------------------------------------------------------------
 /// # ExecutorError
 //------------------------------------------------------------------------------
-pub enum ExecutorError<T>
+pub(crate) enum ExecutorError<T>
 {
     MpmcError(mpmc::MpmcError<Arc<Mutex<Task<T>>>>),
     PoisonError(String),

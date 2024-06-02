@@ -18,7 +18,7 @@ type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 /// - Running: The task is currently running.
 /// - Done: The task has completed.
 //------------------------------------------------------------------------------
-pub(super) enum TaskState
+pub(crate) enum TaskState
 {
     Ready,
     Running,
@@ -29,7 +29,7 @@ pub(super) enum TaskState
 //------------------------------------------------------------------------------
 /// # Task
 //------------------------------------------------------------------------------
-pub(super) struct Task<T>
+pub(crate) struct Task<T>
 {
     future: BoxFuture<T>,
     state: TaskState,

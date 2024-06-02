@@ -97,7 +97,11 @@ impl<T: Send + 'static> Worker<T>
                         Poll::Ready(result) =>
                         {
                             let (lock, cvar) = &*is_done;
-                            let mut done = lock.lock().unwrap();
+                            let mut done = match lock.lock()
+                            {
+                                Ok(lock) => lock,
+                                Err(_) => continue,
+                            };
                             *done = Some(result);
                             cvar.notify_one();
                         },
