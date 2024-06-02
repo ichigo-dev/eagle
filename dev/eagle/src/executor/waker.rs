@@ -8,6 +8,8 @@ use std::task::{ RawWaker, RawWakerVTable, Waker };
 
 
 //------------------------------------------------------------------------------
+/// # waker_fn
+///
 /// Creates a new Waker from a closure.
 //------------------------------------------------------------------------------
 pub(super) fn waker_fn<F: Fn() + Send + Sync + 'static>( f: F ) -> Waker
@@ -17,6 +19,10 @@ pub(super) fn waker_fn<F: Fn() + Send + Sync + 'static>( f: F ) -> Waker
     unsafe { Waker::from_raw(RawWaker::new(raw, vtable)) }
 }
 
+
+//------------------------------------------------------------------------------
+/// # WakerHelper
+//------------------------------------------------------------------------------
 struct WakerHelper<F>(F);
 
 impl<F: Fn() + Send + Sync + 'static> WakerHelper<F>

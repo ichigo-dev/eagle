@@ -39,9 +39,9 @@ impl EagleServer
 
         println!("Server is running on {}", self.address);
 
-        let executor = Executor::new(10);
+        let mut executor = Executor::new(10);
         executor.start();
-        executor.block_on(async move
+        let _ = executor.block_on(async move
         {
             loop
             {
