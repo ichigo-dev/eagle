@@ -61,8 +61,9 @@ impl<T: Send + 'static> Executor<T>
     //--------------------------------------------------------------------------
     /// Spawns a new task.
     //--------------------------------------------------------------------------
-    fn spawn( &self, task: Arc<Mutex<Task<T>>> )
+    fn spawn( &self, task: Task<T> )
     {
+        let task = Arc::new(Mutex::new(task));
         let _ = self.sender.send(task);
     }
 
@@ -73,9 +74,7 @@ impl<T: Send + 'static> Executor<T>
         where
             F: Future<Output = T> + Send + 'static,
     {
-        let future = Box::pin(future);
-        let task = Arc::new(Mutex::new(Task::new(future)));
-
+        let task = Task::new(future);
         self.spawn(task);
 
         let (lock, cvar) = &*self.is_done;

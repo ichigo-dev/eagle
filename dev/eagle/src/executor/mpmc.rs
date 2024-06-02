@@ -9,7 +9,7 @@ use std::sync::{ mpsc, Arc, Mutex, PoisonError };
 //------------------------------------------------------------------------------
 /// Creates a new MPMC channel.
 //------------------------------------------------------------------------------
-pub(super) fn channel<T>() -> (Sender<T>, Receiver<T>)
+pub(super) fn channel<T: Send>() -> (Sender<T>, Receiver<T>)
 {
     let (sender, receiver) = mpsc::channel();
     let sender = Sender::new(sender);
@@ -26,7 +26,7 @@ pub(super) enum MpmcError<T>
     SendError(mpsc::SendError<T>),
     RecvError(mpsc::RecvError),
     TryRecvError(mpsc::TryRecvError),
-    PoisonError,
+    PoisonError(String),
 }
 
 impl<T> Debug for MpmcError<T>
@@ -38,7 +38,7 @@ impl<T> Debug for MpmcError<T>
             Self::SendError(error) => write!(f, "SendError: {:?}", error),
             Self::RecvError(error) => write!(f, "RecvError: {:?}", error),
             Self::TryRecvError(error) => write!(f, "TryRecvError: {:?}", error),
-            Self::PoisonError => write!(f, "PoisonError"),
+            Self::PoisonError(error) => write!(f, "PoisonError: {:?}", error),
         }
     }
 }
@@ -52,7 +52,7 @@ impl<T> Display for MpmcError<T>
             Self::SendError(error) => write!(f, "SendError: {}", error),
             Self::RecvError(error) => write!(f, "RecvError: {}", error),
             Self::TryRecvError(error) => write!(f, "TryRecvError: {}", error),
-            Self::PoisonError => write!(f, "PoisonError"),
+            Self::PoisonError(error) => write!(f, "PoisonError: {}", error),
         }
     }
 }
@@ -83,9 +83,9 @@ impl<T> From<mpsc::TryRecvError> for MpmcError<T>
 
 impl<T, E> From<PoisonError<E>> for MpmcError<T>
 {
-    fn from( _error: PoisonError<E> ) -> Self
+    fn from( error: PoisonError<E> ) -> Self
     {
-        Self::PoisonError
+        Self::PoisonError(format!("{:?}", error))
     }
 }
 
@@ -93,12 +93,12 @@ impl<T, E> From<PoisonError<E>> for MpmcError<T>
 //------------------------------------------------------------------------------
 /// Sender
 //------------------------------------------------------------------------------
-pub(super) struct Sender<T>
+pub(super) struct Sender<T: Send>
 {
     inner: Arc<Mutex<mpsc::Sender<T>>>,
 }
 
-impl<T> Sender<T>
+impl<T: Send> Sender<T>
 {
     //--------------------------------------------------------------------------
     /// Creates a new Sender.
@@ -136,12 +136,12 @@ impl<T> Sender<T>
 //------------------------------------------------------------------------------
 /// Receiver
 //------------------------------------------------------------------------------
-pub(super) struct Receiver<T>
+pub(super) struct Receiver<T: Send>
 {
     inner: Arc<Mutex<mpsc::Receiver<T>>>,
 }
 
-impl<T> Receiver<T>
+impl<T: Send> Receiver<T>
 {
     //--------------------------------------------------------------------------
     /// Creates a new Receiver.
@@ -171,6 +171,15 @@ impl<T> Receiver<T>
     pub(super) fn recv( &self ) -> Result<T, MpmcError<T>>
     {
         let message = self.inner.lock()?.recv()?;
+        Ok(message)
+    }
+
+    //--------------------------------------------------------------------------
+    /// Tries to receive a message.
+    //--------------------------------------------------------------------------
+    pub(super) fn try_recv( &self ) -> Result<T, MpmcError<T>>
+    {
+        let message = self.inner.lock()?.try_recv()?;
         Ok(message)
     }
 }

@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------------
-/// Waker
+/// # Waker
 //------------------------------------------------------------------------------
 
 use std::mem::ManuallyDrop;
@@ -8,9 +8,9 @@ use std::task::{ RawWaker, RawWakerVTable, Waker };
 
 
 //------------------------------------------------------------------------------
-/// Creates a new Waker.
+/// Creates a new Waker from a closure.
 //------------------------------------------------------------------------------
-pub(super) fn waker_fn<F: Fn() + 'static>( f: F ) -> Waker
+pub(super) fn waker_fn<F: Fn() + Send + Sync + 'static>( f: F ) -> Waker
 {
     let raw = Arc::into_raw(Arc::new(f)) as *const ();
     let vtable = &WakerHelper::<F>::VTABLE;
@@ -19,7 +19,7 @@ pub(super) fn waker_fn<F: Fn() + 'static>( f: F ) -> Waker
 
 struct WakerHelper<F>(F);
 
-impl<F: Fn() + 'static> WakerHelper<F>
+impl<F: Fn() + Send + Sync + 'static> WakerHelper<F>
 {
     const VTABLE: RawWakerVTable = RawWakerVTable::new
     (
@@ -35,7 +35,9 @@ impl<F: Fn() + 'static> WakerHelper<F>
     unsafe fn clone_waker( ptr: *const () ) -> RawWaker
     {
         let arc = ManuallyDrop::new(Arc::from_raw(ptr as *const F));
-        std::mem::forget(arc.clone());
+        let cloned_arc = arc.clone();
+        std::mem::forget(arc);
+        let ptr = Arc::into_raw(cloned_arc.into()) as *const ();
         RawWaker::new(ptr, &Self::VTABLE)
     }
 
@@ -44,7 +46,7 @@ impl<F: Fn() + 'static> WakerHelper<F>
     //--------------------------------------------------------------------------
     unsafe fn wake( ptr: *const () )
     {
-        let arc = ManuallyDrop::new(Arc::from_raw(ptr as *const F));
+        let arc = Arc::from_raw(ptr as *const F);
         (arc)();
     }
 
@@ -55,6 +57,7 @@ impl<F: Fn() + 'static> WakerHelper<F>
     {
         let arc = ManuallyDrop::new(Arc::from_raw(ptr as *const F));
         (arc)();
+        std::mem::forget(arc);
     }
 
     //--------------------------------------------------------------------------
