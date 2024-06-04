@@ -2,8 +2,8 @@
 //! # Async executor
 //------------------------------------------------------------------------------
 
-use super::mpmc::{ self, Sender };
-use super::task::Task;
+use super::priority_mpmc::{ self, Sender };
+use super::task::{ Task, TaskHandle };
 use super::worker::Worker;
 
 use std::fmt::{ self, Debug, Display, Formatter };
@@ -15,14 +15,14 @@ use std::sync::{ Condvar, Mutex, PoisonError };
 //------------------------------------------------------------------------------
 /// # ExecutorError
 //------------------------------------------------------------------------------
-pub(crate) enum ExecutorError<T>
+pub(crate) enum ExecutorError
 {
-    MpmcError(mpmc::MpmcError<Arc<Mutex<Task<T>>>>),
+    MpmcError(priority_mpmc::MpmcError),
     PoisonError(String),
     NoResult,
 }
 
-impl<T> Debug for ExecutorError<T>
+impl Debug for ExecutorError
 {
     fn fmt( &self, f: &mut Formatter<'_> ) -> fmt::Result
     {
@@ -35,7 +35,7 @@ impl<T> Debug for ExecutorError<T>
     }
 }
 
-impl<T> Display for ExecutorError<T>
+impl Display for ExecutorError
 {
     fn fmt( &self, f: &mut Formatter<'_> ) -> fmt::Result
     {
@@ -48,15 +48,15 @@ impl<T> Display for ExecutorError<T>
     }
 }
 
-impl<T> From<mpmc::MpmcError<Arc<Mutex<Task<T>>>>> for ExecutorError<T>
+impl From<priority_mpmc::MpmcError> for ExecutorError
 {
-    fn from( error: mpmc::MpmcError<Arc<Mutex<Task<T>>>> ) -> Self
+    fn from( error: priority_mpmc::MpmcError ) -> Self
     {
         Self::MpmcError(error)
     }
 }
 
-impl<T, E> From<PoisonError<E>> for ExecutorError<T>
+impl<E> From<PoisonError<E>> for ExecutorError
 {
     fn from( error: PoisonError<E> ) -> Self
     {
@@ -71,7 +71,7 @@ impl<T, E> From<PoisonError<E>> for ExecutorError<T>
 pub(crate) struct Executor<T>
 {
     workers: Vec<Worker<T>>,
-    sender: Sender<Arc<Mutex<Task<T>>>>,
+    sender: Sender<TaskHandle<T>>,
     is_done: Arc<(Mutex<Option<T>>, Condvar)>,
 }
 
@@ -82,7 +82,7 @@ impl<T: Send + 'static> Executor<T>
     //--------------------------------------------------------------------------
     pub(crate) fn new( num_threads: usize ) -> Self
     {
-        let (sender, receiver) = mpmc::channel();
+        let (sender, receiver) = priority_mpmc::channel();
         let mut workers = Vec::with_capacity(num_threads);
         let is_done = Arc::new((Mutex::new(None), Condvar::new()));
 
@@ -121,9 +121,9 @@ impl<T: Send + 'static> Executor<T>
     //--------------------------------------------------------------------------
     /// Spawns a new task.
     //--------------------------------------------------------------------------
-    fn spawn( &self, task: Task<T> ) -> Result<(), ExecutorError<T>>
+    fn spawn( &self, task: Task<T> ) -> Result<(), ExecutorError>
     {
-        let task = Arc::new(Mutex::new(task));
+        let task = TaskHandle::new(task);
         self.sender.send(task).map_err(ExecutorError::MpmcError)
     }
 
@@ -134,7 +134,7 @@ impl<T: Send + 'static> Executor<T>
     (
         &self,
         future: F,
-    ) -> Result<F::Output, ExecutorError<T>>
+    ) -> Result<F::Output, ExecutorError>
         where
             F: Future<Output = T> + Send + 'static,
     {

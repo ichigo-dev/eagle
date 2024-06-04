@@ -2,8 +2,8 @@
 //! # Async executor worker
 //------------------------------------------------------------------------------
 
-use super::task::Task;
-use super::mpmc::{ Receiver, Sender };
+use super::task::{ Task, TaskHandle };
+use super::priority_mpmc::{ Receiver, Sender };
 use super::waker::waker_fn;
 
 use std::sync::{ Arc, Condvar, Mutex };
@@ -18,8 +18,8 @@ use std::thread::{ self, JoinHandle };
 pub(super) struct Worker<T>
 {
     id: usize,
-    sender: Sender<Arc<Mutex<Task<T>>>>,
-    receiver: Receiver<Arc<Mutex<Task<T>>>>,
+    sender: Sender<TaskHandle<T>>,
+    receiver: Receiver<TaskHandle<T>>,
     is_done: Arc<(Mutex<Option<T>>, Condvar)>,
     is_stopped: Arc<AtomicBool>,
     pub(super) join_handle: Option<JoinHandle<()>>,
@@ -33,8 +33,8 @@ impl<T: Send + 'static> Worker<T>
     pub(super) fn new
     (
         id: usize,
-        sender: Sender<Arc<Mutex<Task<T>>>>,
-        receiver: Receiver<Arc<Mutex<Task<T>>>>,
+        sender: Sender<TaskHandle<T>>,
+        receiver: Receiver<TaskHandle<T>>,
         is_done: Arc<(Mutex<Option<T>>, Condvar)>,
     ) -> Self
     {
@@ -87,12 +87,7 @@ impl<T: Send + 'static> Worker<T>
                     };
                     let mut context = Context::from_waker(&waker);
 
-                    let mut guard = match task.lock()
-                    {
-                        Ok(guard) => guard,
-                        Err(_) => continue,
-                    };
-                    match guard.poll(&mut context)
+                    match task.poll(&mut context)
                     {
                         Poll::Ready(result) =>
                         {
