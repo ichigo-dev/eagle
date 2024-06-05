@@ -2,8 +2,7 @@
 //! # Async executor worker
 //------------------------------------------------------------------------------
 
-use super::task::{ Task, TaskHandle };
-use super::priority_mpmc::{ Receiver, Sender };
+use super::task_queue::TaskQueue;
 use super::waker::waker_fn;
 
 use std::sync::{ Arc, Condvar, Mutex };
@@ -15,17 +14,16 @@ use std::thread::{ self, JoinHandle };
 //------------------------------------------------------------------------------
 /// # Worker
 //------------------------------------------------------------------------------
-pub(super) struct Worker<T>
+pub(super) struct Worker<T: Clone>
 {
     id: usize,
-    sender: Sender<TaskHandle<T>>,
-    receiver: Receiver<TaskHandle<T>>,
+    queue: TaskQueue<T>,
     is_done: Arc<(Mutex<Option<T>>, Condvar)>,
     is_stopped: Arc<AtomicBool>,
     pub(super) join_handle: Option<JoinHandle<()>>,
 }
 
-impl<T: Send + 'static> Worker<T>
+impl<T: Send + Clone + 'static> Worker<T>
 {
     //--------------------------------------------------------------------------
     /// Creates a new Worker.
@@ -33,16 +31,14 @@ impl<T: Send + 'static> Worker<T>
     pub(super) fn new
     (
         id: usize,
-        sender: Sender<TaskHandle<T>>,
-        receiver: Receiver<TaskHandle<T>>,
+        queue: TaskQueue<T>,
         is_done: Arc<(Mutex<Option<T>>, Condvar)>,
     ) -> Self
     {
         Self
         {
             id,
-            sender, 
-            receiver,
+            queue,
             is_done,
             is_stopped: Arc::new(AtomicBool::new(false)),
             join_handle: None,
@@ -54,8 +50,7 @@ impl<T: Send + 'static> Worker<T>
     //--------------------------------------------------------------------------
     pub(super) fn run( &mut self )
     {
-        let sender = self.sender.clone();
-        let receiver = self.receiver.clone();
+        let queue = self.queue.clone();
         let is_done = self.is_done.clone();
         let is_stopped = self.is_stopped.clone();
 
@@ -70,19 +65,26 @@ impl<T: Send + 'static> Worker<T>
                         break;
                     }
 
-                    let task = match receiver.recv()
+                    let mut task = match queue.pop()
                     {
-                        Ok(task) => task,
+                        Ok(task) =>
+                        {
+                            match task
+                            {
+                                Some(task) => task,
+                                None => continue,
+                            }
+                        }
                         Err(_) => break,
                     };
 
                     let cloned_task = task.clone();
                     let waker =
                     {
-                        let sender = sender.clone();
+                        let queue = queue.clone();
                         waker_fn(move ||
                         {
-                            let _ = sender.send(cloned_task.clone());
+                            let _ = queue.push(cloned_task.clone());
                         })
                     };
                     let mut context = Context::from_waker(&waker);
@@ -111,7 +113,7 @@ impl<T: Send + 'static> Worker<T>
     }
 }
 
-impl<T> Worker<T>
+impl<T: Clone> Worker<T>
 {
     //--------------------------------------------------------------------------
     /// Stops the Worker.
@@ -122,7 +124,7 @@ impl<T> Worker<T>
     }
 }
 
-impl<T> Drop for Worker<T>
+impl<T: Clone> Drop for Worker<T>
 {
     fn drop( &mut self )
     {

@@ -2,11 +2,10 @@
 //! # Async executor
 //------------------------------------------------------------------------------
 
-use super::priority_mpmc::{ self, Sender };
-use super::task::{ Task, TaskHandle };
+use super::task::Task;
+use super::task_queue::{ TaskQueue, TaskQueueError };
 use super::worker::Worker;
 
-use std::fmt::{ self, Debug, Display, Formatter };
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::{ Condvar, Mutex, PoisonError };
@@ -15,44 +14,19 @@ use std::sync::{ Condvar, Mutex, PoisonError };
 //------------------------------------------------------------------------------
 /// # ExecutorError
 //------------------------------------------------------------------------------
+#[derive(Debug)]
 pub(crate) enum ExecutorError
 {
-    MpmcError(priority_mpmc::MpmcError),
+    TaskQueueError(TaskQueueError),
     PoisonError(String),
     NoResult,
 }
 
-impl Debug for ExecutorError
+impl From<TaskQueueError> for ExecutorError
 {
-    fn fmt( &self, f: &mut Formatter<'_> ) -> fmt::Result
+    fn from( error: TaskQueueError ) -> Self
     {
-        match self
-        {
-            Self::MpmcError(error) => write!(f, "MpmcError: {:?}", error),
-            Self::PoisonError(error) => write!(f, "PoisonError: {:?}", error),
-            Self::NoResult => write!(f, "NoResult"),
-        }
-    }
-}
-
-impl Display for ExecutorError
-{
-    fn fmt( &self, f: &mut Formatter<'_> ) -> fmt::Result
-    {
-        match self
-        {
-            Self::MpmcError(error) => write!(f, "MpmcError: {}", error),
-            Self::PoisonError(error) => write!(f, "PoisonError: {}", error),
-            Self::NoResult => write!(f, "NoResult"),
-        }
-    }
-}
-
-impl From<priority_mpmc::MpmcError> for ExecutorError
-{
-    fn from( error: priority_mpmc::MpmcError ) -> Self
-    {
-        Self::MpmcError(error)
+        Self::TaskQueueError(error)
     }
 }
 
@@ -68,32 +42,30 @@ impl<E> From<PoisonError<E>> for ExecutorError
 //------------------------------------------------------------------------------
 /// # Executor
 //------------------------------------------------------------------------------
-pub(crate) struct Executor<T>
+pub(crate) struct Executor<T: Clone>
 {
     workers: Vec<Worker<T>>,
-    sender: Sender<TaskHandle<T>>,
+    queue: TaskQueue<T>,
     is_done: Arc<(Mutex<Option<T>>, Condvar)>,
 }
 
-impl<T: Send + 'static> Executor<T>
+impl<T: Send + Clone + 'static> Executor<T>
 {
     //--------------------------------------------------------------------------
     /// Creates a new Executor.
     //--------------------------------------------------------------------------
     pub(crate) fn new( num_threads: usize ) -> Self
     {
-        let (sender, receiver) = priority_mpmc::channel();
+        let queue = TaskQueue::new();
         let mut workers = Vec::with_capacity(num_threads);
         let is_done = Arc::new((Mutex::new(None), Condvar::new()));
 
         for id in 0..num_threads
         {
-            let receiver = receiver.clone();
             let worker = Worker::new
             (
                 id,
-                sender.clone(),
-                receiver,
+                (&queue).clone(),
                 is_done.clone(),
             );
             workers.push(worker);
@@ -102,7 +74,7 @@ impl<T: Send + 'static> Executor<T>
         Self
         {
             workers,
-            sender,
+            queue,
             is_done,
         }
     }
@@ -123,8 +95,8 @@ impl<T: Send + 'static> Executor<T>
     //--------------------------------------------------------------------------
     fn spawn( &self, task: Task<T> ) -> Result<(), ExecutorError>
     {
-        let task = TaskHandle::new(task);
-        self.sender.send(task).map_err(ExecutorError::MpmcError)
+        self.queue.push(task)?;
+        Ok(())
     }
 
     //--------------------------------------------------------------------------
@@ -137,6 +109,7 @@ impl<T: Send + 'static> Executor<T>
     ) -> Result<F::Output, ExecutorError>
         where
             F: Future<Output = T> + Send + 'static,
+            T: Clone,
     {
         let task = Task::new(future);
         self.spawn(task)?;
@@ -160,7 +133,7 @@ impl<T: Send + 'static> Executor<T>
     }
 }
 
-impl<T> Drop for Executor<T>
+impl<T: Clone> Drop for Executor<T>
 {
     fn drop( &mut self )
     {

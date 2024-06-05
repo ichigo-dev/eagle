@@ -31,14 +31,15 @@ pub(crate) enum TaskState
 //------------------------------------------------------------------------------
 /// # Task
 //------------------------------------------------------------------------------
+#[derive(Clone)]
 pub(crate) struct Task<T>
 {
-    future: BoxFuture<T>,
+    future: Arc<Mutex<BoxFuture<T>>>,
     state: TaskState,
     priority: usize,
 }
 
-impl<T: Send + 'static> Task<T>
+impl<T: Send + Clone + 'static> Task<T>
 {
     //--------------------------------------------------------------------------
     /// Creates a new Task.
@@ -57,7 +58,7 @@ impl<T: Send + 'static> Task<T>
     {
         Self
         {
-            future: Box::pin(future),
+            future: Arc::new(Mutex::new(Box::pin(future))),
             state: TaskState::Ready,
             priority,
         }
@@ -69,7 +70,8 @@ impl<T: Send + 'static> Task<T>
     pub(super) fn poll( &mut self, context: &mut Context ) -> Poll<T>
     {
         self.state = TaskState::Running;
-        match self.future.as_mut().poll(context)
+        let mut future = self.future.lock().unwrap();
+        match future.as_mut().poll(context)
         {
             Poll::Ready(result) =>
             {
@@ -123,96 +125,5 @@ impl<T> Ord for Task<T>
     fn cmp( &self, other: &Self ) -> std::cmp::Ordering
     {
         self.priority.cmp(&other.priority)
-    }
-}
-
-
-//------------------------------------------------------------------------------
-/// # TaskHandle
-//------------------------------------------------------------------------------
-pub(crate) struct TaskHandle<T>
-{
-    task: Arc<Mutex<Task<T>>>,
-}
-
-impl<T: Send + 'static> TaskHandle<T>
-{
-    //--------------------------------------------------------------------------
-    /// Creates a new TaskHandle.
-    //--------------------------------------------------------------------------
-    pub(super) fn new( task: Task<T> ) -> Self
-    {
-        Self
-        {
-            task: Arc::new(Mutex::new(task)),
-        }
-    }
-
-    //--------------------------------------------------------------------------
-    /// Polls the task.
-    //--------------------------------------------------------------------------
-    pub(super) fn poll( &self, context: &mut Context ) -> Poll<T>
-    {
-        let mut task = self.task.lock().unwrap();
-        task.poll(context)
-    }
-
-    //--------------------------------------------------------------------------
-    /// Gets the state of the task.
-    //--------------------------------------------------------------------------
-    pub(super) fn state( &self ) -> TaskState
-    {
-        let task = self.task.lock().unwrap();
-        task.state.clone()
-    }
-
-    //--------------------------------------------------------------------------
-    /// Gets the priority of the task.
-    //--------------------------------------------------------------------------
-    pub(super) fn priority( &self ) -> usize
-    {
-        let task = self.task.lock().unwrap();
-        task.priority
-    }
-}
-
-impl<T> Clone for TaskHandle<T>
-{
-    fn clone( &self ) -> Self
-    {
-        Self
-        {
-            task: self.task.clone(),
-        }
-    }
-}
-
-impl<T> PartialEq for TaskHandle<T>
-{
-    fn eq( &self, other: &Self ) -> bool
-    {
-        let task = self.task.lock().unwrap();
-        let other = other.task.lock().unwrap();
-        task.priority == other.priority
-    }
-}
-
-impl<T> Eq for TaskHandle<T> {}
-
-impl<T> PartialOrd for TaskHandle<T>
-{
-    fn partial_cmp( &self, other: &Self ) -> Option<std::cmp::Ordering>
-    {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Ord for TaskHandle<T>
-{
-    fn cmp( &self, other: &Self ) -> std::cmp::Ordering
-    {
-        let task = self.task.lock().unwrap();
-        let other = other.task.lock().unwrap();
-        task.priority.cmp(&other.priority)
     }
 }

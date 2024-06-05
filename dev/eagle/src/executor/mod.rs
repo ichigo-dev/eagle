@@ -3,7 +3,7 @@
 //------------------------------------------------------------------------------
 
 mod executor;
-mod priority_mpmc;
+mod task_queue;
 mod task;
 mod waker;
 mod worker;
