@@ -137,12 +137,9 @@ impl<T: Clone> Drop for Executor<T>
 {
     fn drop( &mut self )
     {
-        for worker in &self.workers
-        {
-            worker.stop();
-        }
         for worker in &mut self.workers
         {
+            worker.stop();
             if let Some(thread) = worker.join_handle.take()
             {
                 let _ = thread.join();

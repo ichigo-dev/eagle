@@ -7,9 +7,27 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{ Context, Poll };
-use std::sync::{ Arc, Mutex };
+use std::sync::{ Arc, Mutex, PoisonError };
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+
+
+//------------------------------------------------------------------------------
+/// # TaskError
+//------------------------------------------------------------------------------
+#[derive(Debug)]
+pub(crate) enum TaskError
+{
+    PoisonError(String),
+}
+
+impl<E> From<PoisonError<E>> for TaskError
+{
+    fn from( error: PoisonError<E> ) -> Self
+    {
+        Self::PoisonError(format!("{:?}", error))
+    }
+}
 
 
 //------------------------------------------------------------------------------
@@ -35,7 +53,7 @@ pub(crate) enum TaskState
 pub(crate) struct Task<T>
 {
     future: Arc<Mutex<BoxFuture<T>>>,
-    state: TaskState,
+    state: Arc<Mutex<TaskState>>,
     priority: usize,
 }
 
@@ -59,7 +77,7 @@ impl<T: Send + Clone + 'static> Task<T>
         Self
         {
             future: Arc::new(Mutex::new(Box::pin(future))),
-            state: TaskState::Ready,
+            state: Arc::new(Mutex::new(TaskState::Ready)),
             priority,
         }
     }
@@ -67,38 +85,24 @@ impl<T: Send + Clone + 'static> Task<T>
     //--------------------------------------------------------------------------
     /// Polls the task.
     //--------------------------------------------------------------------------
-    pub(super) fn poll( &mut self, context: &mut Context ) -> Poll<T>
+    pub(super) fn poll
+    (
+        &mut self,
+        context: &mut Context,
+    ) -> Result<Poll<T>, TaskError>
     {
-        self.state = TaskState::Running;
-        let mut future = self.future.lock().unwrap();
+        let mut state = self.state.lock()?;
+        *state = TaskState::Running;
+        let mut future = self.future.lock()?;
         match future.as_mut().poll(context)
         {
             Poll::Ready(result) =>
             {
-                self.state = TaskState::Done;
-                Poll::Ready(result)
+                *state = TaskState::Done;
+                Ok(Poll::Ready(result))
             },
-            Poll::Pending => Poll::Pending
+            Poll::Pending => Ok(Poll::Pending)
         }
-    }
-}
-
-impl<T> Task<T>
-{
-    //--------------------------------------------------------------------------
-    /// Gets the state of the task.
-    //--------------------------------------------------------------------------
-    pub(super) fn state( &self ) -> TaskState
-    {
-        self.state.clone()
-    }
-
-    //--------------------------------------------------------------------------
-    /// Gets the priority of the task.
-    //--------------------------------------------------------------------------
-    pub(super) fn priority( &self ) -> usize
-    {
-        self.priority
     }
 }
 

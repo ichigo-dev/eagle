@@ -20,6 +20,7 @@ pub(super) struct Worker<T: Clone>
     queue: TaskQueue<T>,
     is_done: Arc<(Mutex<Option<T>>, Condvar)>,
     is_stopped: Arc<AtomicBool>,
+
     pub(super) join_handle: Option<JoinHandle<()>>,
 }
 
@@ -91,7 +92,7 @@ impl<T: Send + Clone + 'static> Worker<T>
 
                     match task.poll(&mut context)
                     {
-                        Poll::Ready(result) =>
+                        Ok(Poll::Ready(result)) =>
                         {
                             let (lock, cvar) = &*is_done;
                             let mut done = match lock.lock()
@@ -102,10 +103,12 @@ impl<T: Send + Clone + 'static> Worker<T>
                             *done = Some(result);
                             cvar.notify_one();
                         },
-                        Poll::Pending => {},
+                        Ok(Poll::Pending) => {},
+                        Err(_) => continue,
                     };
                 }
             });
+
         if let Ok(join_handle) = join_handle
         {
             self.join_handle = Some(join_handle);
