@@ -2,6 +2,7 @@
 //! # Async executor
 //------------------------------------------------------------------------------
 
+use super::reactor::Reactor;
 use super::task::Task;
 use super::task_queue::{ TaskQueue, TaskQueueError };
 use super::worker::Worker;
@@ -47,6 +48,7 @@ pub(crate) struct Executor<T: Clone>
     workers: Vec<Worker<T>>,
     queue: TaskQueue<T>,
     is_done: Arc<(Mutex<Option<T>>, Condvar)>,
+    reactor: Reactor,
 }
 
 impl<T: Send + Clone + 'static> Executor<T>
@@ -76,6 +78,7 @@ impl<T: Send + Clone + 'static> Executor<T>
             workers,
             queue,
             is_done,
+            reactor: Reactor::new(),
         }
     }
     

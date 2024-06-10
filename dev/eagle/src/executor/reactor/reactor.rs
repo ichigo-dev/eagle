@@ -1,19 +1,38 @@
-use crate::executor::task::Task;
+//------------------------------------------------------------------------------
+//! # Reactor
+//------------------------------------------------------------------------------
 
-use std::collections::HashMap;
-use std::os::unix::io::RawFd;
+use super::source::Source;
+
 use std::sync::{ Arc, Mutex };
 
 
 //------------------------------------------------------------------------------
 /// # Reactor
 //------------------------------------------------------------------------------
-pub(crate) struct Reactor<T>
+pub(crate) struct Reactor
 {
-    epoll_fd: RawFd,
-    tasks: Arc<Mutex<HashMap<RawFd, Task<T>>>>,
+    sources: Arc<Mutex<Vec<Source>>>
 }
 
-impl<T> Reactor<T>
+impl Reactor
 {
+    //--------------------------------------------------------------------------
+    /// Creates a new Reactor.
+    //--------------------------------------------------------------------------
+    pub(crate) fn new() -> Self
+    {
+        Self
+        {
+            sources: Arc::new(Mutex::new(Vec::new()))
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    /// Registers a new IO.
+    //--------------------------------------------------------------------------
+    pub(crate) fn register( &self, source: Source )
+    {
+        self.sources.lock().unwrap().push(source);
+    }
 }
